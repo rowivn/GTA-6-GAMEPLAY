@@ -33,10 +33,10 @@ def generate_gta6_script():
         "description": "Engaging English description with hashtags #GTA6 #GrandTheftAuto6 #Gaming #Shorts",
         "narration": "Engaging 75-word English voiceover script without stage directions or emojis.",
         "image_prompts": [
-            "Vice City neon skyline at sunset, palm trees, sports cars, GTA 6 art style, 4k",
-            "Futuristic supercar drifting on a neon Miami highway at night, GTA 6 aesthetic",
-            "Two action game characters overlooking a tropical beachfront city at dusk, cinematic lighting",
-            "High speed police chase on a coastal bridge at night with neon lights, video game art"
+            "Vice City neon skyline at sunset, palm trees, sports cars, GTA 6 art style, vertical 9:16",
+            "Futuristic supercar drifting on a neon Miami highway at night, GTA 6 aesthetic, vertical 9:16",
+            "Two action game characters overlooking a tropical beachfront city at dusk, cinematic lighting, vertical 9:16",
+            "High speed police chase on a coastal bridge at night with neon lights, video game art, vertical 9:16"
         ]
     }}
     """
@@ -59,7 +59,7 @@ async def create_voiceover(text, output_audio="voice.mp3"):
     communicate = edge_tts.Communicate(text, voice="en-US-ChristopherNeural", rate="+8%")
     await communicate.save(output_audio)
 
-# 3. Generate Custom 9:16 GTA 6 Style AI Images Directly via Gemini API
+# 3. Generate Custom 9:16 GTA 6 Style AI Images via Gemini Flash Image
 def generate_visuals(image_prompts):
     api_key = os.environ["GEMINI_API_KEY"].strip()
     client = genai.Client(api_key=api_key)
@@ -67,33 +67,39 @@ def generate_visuals(image_prompts):
 
     for idx, img_prompt in enumerate(image_prompts[:4]):
         filename = f"scene_{idx}.jpg"
+        saved = False
         try:
-            result = client.models.generate_images(
-                model="imagen-3.0-generate-002",
-                prompt=img_prompt,
-                config=types.GenerateImagesConfig(
-                    number_of_images=1,
-                    aspect_ratio="9:16",
-                    output_mime_type="image/jpeg",
-                ),
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-image",
+                contents=f"Generate a vibrant 9:16 vertical gaming illustration: {img_prompt}",
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE"],
+                    image_config=types.ImageConfig(aspect_ratio="9:16")
+                )
             )
-            for generated_image in result.generated_images:
-                img = Image.open(BytesIO(generated_image.image.image_bytes)).convert("RGB")
-                img = img.resize((1080, 1920), Image.LANCZOS)
-                img.save(filename, quality=95)
-                image_files.append(filename)
-                print(f"Generated AI image {idx+1}/4")
+            for part in response.candidates[0].content.parts:
+                if part.inline_data:
+                    img = Image.open(BytesIO(part.inline_data.data)).convert("RGB")
+                    img = img.resize((1080, 1920), Image.LANCZOS)
+                    img.save(filename, quality=95)
+                    image_files.append(filename)
+                    saved = True
+                    print(f"Generated AI image {idx+1}/4 successfully!")
+                    break
         except Exception as e:
-            print(f"Imagen fallback triggered for scene {idx}: {e}")
-            # Create sleek neon gradient fallback if image quota hits limit
+            print(f"Image generation fallback for scene {idx}: {e}")
+
+        if not saved:
+            # Sleek Vice City Neon Gradient Fallback (Fixed tuple indexing)
             img = Image.new("RGB", (1080, 1920), (15, 10, 35))
             draw = ImageDraw.Draw(img)
             colors = [(255, 45, 149), (0, 229, 255), (140, 45, 255), (255, 140, 0)]
             c = colors[idx % len(colors)]
             for y in range(1920):
-                r = int(15 + (c * (y / 1920)) * 0.6)
-                g = int(10 + (c[1] * (y / 1920)) * 0.6)
-                b = int(35 + (c[2] * (y / 1920)) * 0.6)
+                ratio = y / 1920.0
+                r = int(15 + (c[0] * ratio) * 0.6)
+                g = int(10 + (c[1] * ratio) * 0.6)
+                b = int(35 + (c[2] * ratio) * 0.6)
                 draw.line([(0, y), (1080, y)], fill=(r, g, b))
             img.save(filename, quality=95)
             image_files.append(filename)
