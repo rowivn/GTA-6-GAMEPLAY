@@ -5,8 +5,10 @@ import random
 import asyncio
 import requests
 import edge_tts
+from PIL import Image
+from io import BytesIO
 from google import genai
-from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips
+from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -30,7 +32,7 @@ def generate_gta6_script():
         "title": "Catchy English title under 60 characters #GTA6 #Shorts",
         "description": "Engaging English description with hashtags #GTA6 #GrandTheftAuto6 #Gaming #Shorts",
         "narration": "Engaging 75-word English voiceover script without stage directions or emojis.",
-        "search_keywords": ["neon city", "sports car", "miami beach", "gaming"]
+        "search_keywords": ["Miami skyline night", "sports car neon", "Miami beach sunset", "video game controller"]
     }}
     """
     models_to_try = ["gemini-3.5-flash-lite", "gemini-3.0-flash", "gemini-2.5-flash"]
@@ -52,59 +54,71 @@ async def create_voiceover(text, output_audio="voice.mp3"):
     communicate = edge_tts.Communicate(text, voice="en-US-ChristopherNeural", rate="+8%")
     await communicate.save(output_audio)
 
-# 3. Fetch Background Video Clips from Pixabay (with Browser User-Agent)
-def download_clips(keywords):
-    api_key = os.environ["PIXABAY_API_KEY"].strip()
-    base_url = "https://pixabay.com"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    clip_files = []
-    search_list = (keywords[:4] if keywords else []) + ["neon city", "sports car", "night city", "ocean"]
+# 3. Fetch High-Res Visuals from Wikimedia Commons (100% Free, No API Key Needed!)
+def download_visuals(keywords):
+    headers = {"User-Agent": "GTA6ShortsBot/1.0 (https://github.com)"}
+    image_files = []
+    search_list = (keywords[:5] if keywords else []) + ["Miami night", "Lamborghini", "Miami Beach", "Neon city", "Police car"]
 
     for kw in search_list:
-        if len(clip_files) >= 4:
+        if len(image_files) >= 5:
             break
-        params = {"key": api_key, "q": kw, "per_page": 5}
-        resp = requests.get(base_url, params=params, headers=headers)
-        if resp.status_code != 200 or not resp.text.strip():
-            print(f"Pixabay response issue (Status {resp.status_code}): {resp.text[:100]}")
-            continue
-        data = resp.json()
-        hits = data.get("hits", [])
-        if hits:
-            video_choice = random.choice(hits)
-            video_url = video_choice["videos"]["medium"]["url"]
-            filename = f"clip_{len(clip_files)}.mp4"
-            with open(filename, "wb") as f:
-                f.write(requests.get(video_url, headers=headers).content)
-            clip_files.append(filename)
+        url = "https://wikimedia.org"
+        params = {
+            "action": "query",
+            "format": "json",
+            "generator": "search",
+            "gsrsearch": f"filetype:bitmap {kw}",
+            "gsrnamespace": 6,
+            "gsrlimit": 5,
+            "prop": "imageinfo",
+            "iiprop": "url|size"
+        }
+        try:
+            resp = requests.get(url, params=params, headers=headers, timeout=15).json()
+            pages = resp.get("query", {}).get("pages", {})
+            for page in pages.values():
+                info = page.get("imageinfo", [{}])
+                img_url = info.get("url", "")
+                if img_url.lower().endswith((".jpg", ".jpeg", ".png")) and info.get("width", 0) >= 800:
+                    img_data = requests.get(img_url, headers=headers, timeout=15).content
+                    img = Image.open(BytesIO(img_data)).convert("RGB")
+                    
+                    # Resize and center-crop to 1080x1920 (9:16 vertical)
+                    target_w, target_h = 1080, 1920
+                    scale = max(target_w / img.width, target_h / img.height)
+                    new_size = (int(img.width * scale), int(img.height * scale))
+                    img = img.resize(new_size, Image.LANCZOS)
+                    left = (img.width - target_w) // 2
+                    top = (img.height - target_h) // 2
+                    img = img.crop((left, top, left + target_w, top + target_h))
+                    
+                    filename = f"scene_{len(image_files)}.jpg"
+                    img.save(filename, quality=95)
+                    image_files.append(filename)
+                    break
+        except Exception as e:
+            print(f"Skipping {kw}: {e}")
 
-    if not clip_files:
-        raise ValueError(f"Could not download videos from Pixabay. Check if PIXABAY_API_KEY is valid. Last status: {resp.status_code}")
-    return clip_files
+    if not image_files:
+        raise ValueError("Could not fetch images from Wikimedia.")
+    return image_files
 
-# 4. Crop and Assemble Final 1080x1920 Vertical YouTube Short
-def build_video(clip_files, audio_file="voice.mp3", output_video="gta6_short.mp4"):
+# 4. Create Dynamic Zooming 1080x1920 YouTube Short
+def build_video(image_files, audio_file="voice.mp3", output_video="gta6_short.mp4"):
     audio = AudioFileClip(audio_file)
     duration = audio.duration
-    sub_duration = duration / len(clip_files)
-    processed_clips = []
+    sub_duration = duration / len(image_files)
+    clips = []
 
-    for path in clip_files:
-        clip = VideoFileClip(path).without_audio()
-        if clip.duration < sub_duration:
-            clip = clip.loop(duration=sub_duration)
-        else:
-            clip = clip.subclip(0, sub_duration)
-        
-        clip = clip.resize(height=1920)
-        if clip.w < 1080:
-            clip = clip.resize(width=1080)
-        clip = clip.crop(x_center=clip.w / 2, y_center=clip.h / 2, width=1080, height=1920)
-        processed_clips.append(clip)
+    for idx, img_path in enumerate(image_files):
+        clip = ImageClip(img_path).set_duration(sub_duration)
+        # Smooth Ken Burns zoom-in effect so the Short feels dynamic
+        clip = clip.resize(lambda t: 1.0 + 0.08 * (t / sub_duration))
+        clip = clip.set_position(("center", "center"))
+        clips.append(clip)
 
-    final_video = concatenate_videoclips(processed_clips, method="compose").set_audio(audio)
+    final_video = concatenate_videoclips(clips, method="compose").set_audio(audio)
     final_video.write_videofile(output_video, fps=30, codec="libx264", audio_codec="aac")
 
 # 5. Upload to Your New GTA 6 YouTube Channel
@@ -137,6 +151,6 @@ def upload_to_youtube(video_path, title, description):
 if __name__ == "__main__":
     data = generate_gta6_script()
     asyncio.run(create_voiceover(data["narration"]))
-    clips = download_clips(data["search_keywords"])
-    build_video(clips)
+    visuals = download_visuals(data["search_keywords"])
+    build_video(visuals)
     upload_to_youtube("gta6_short.mp4", data["title"], data["description"])
