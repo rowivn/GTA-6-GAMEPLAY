@@ -52,29 +52,36 @@ async def create_voiceover(text, output_audio="voice.mp3"):
     communicate = edge_tts.Communicate(text, voice="en-US-ChristopherNeural", rate="+8%")
     await communicate.save(output_audio)
 
-# 3. Fetch Background Video Clips from Pixabay
+# 3. Fetch Background Video Clips from Pixabay (with Browser User-Agent)
 def download_clips(keywords):
     api_key = os.environ["PIXABAY_API_KEY"].strip()
     base_url = "https://pixabay.com"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
     clip_files = []
-    for idx, kw in enumerate(keywords[:4]):
-        params = {
-            "key": api_key,
-            "q": kw,
-            "per_page": 5
-        }
-        res = requests.get(base_url, params=params).json()
-        hits = res.get("hits", [])
-        if not hits:
-            params["q"] = "neon city"
-            hits = requests.get(base_url, params=params).json().get("hits", [])
+    search_list = (keywords[:4] if keywords else []) + ["neon city", "sports car", "night city", "ocean"]
+
+    for kw in search_list:
+        if len(clip_files) >= 4:
+            break
+        params = {"key": api_key, "q": kw, "per_page": 5}
+        resp = requests.get(base_url, params=params, headers=headers)
+        if resp.status_code != 200 or not resp.text.strip():
+            print(f"Pixabay response issue (Status {resp.status_code}): {resp.text[:100]}")
+            continue
+        data = resp.json()
+        hits = data.get("hits", [])
         if hits:
             video_choice = random.choice(hits)
             video_url = video_choice["videos"]["medium"]["url"]
-            filename = f"clip_{idx}.mp4"
+            filename = f"clip_{len(clip_files)}.mp4"
             with open(filename, "wb") as f:
-                f.write(requests.get(video_url).content)
+                f.write(requests.get(video_url, headers=headers).content)
             clip_files.append(filename)
+
+    if not clip_files:
+        raise ValueError(f"Could not download videos from Pixabay. Check if PIXABAY_API_KEY is valid. Last status: {resp.status_code}")
     return clip_files
 
 # 4. Crop and Assemble Final 1080x1920 Vertical YouTube Short
