@@ -127,7 +127,7 @@ def upload_to_youtube(video_path, title, description):
     creds = Credentials(
         token=None,
         refresh_token=os.environ["REFRESH_TOKEN"].strip(),
-        token_uri="https://OAUTH2.googleapis.com/TOKEN",
+        token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ["CLIENT_ID"].strip(),
         client_secret=os.environ["CLIENT_SECRET"].strip(),
     )
