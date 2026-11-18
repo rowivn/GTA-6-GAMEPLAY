@@ -32,7 +32,7 @@ def generate_gta6_script():
     }}
     """
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         contents=prompt,
     )
     raw_text = response.text.strip().replace("```json", "").replace("```", "").strip()
