@@ -11,9 +11,10 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# 1. Generate 100% English GTA 6 Short Script with Auto-Retry & Fallback Models
+# 1. Generate 100% English GTA 6 Short Script
 def generate_gta6_script():
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    api_key = os.environ["GEMINI_API_KEY"].strip()
+    client = genai.Client(api_key=api_key)
     topics = [
         "Vice City map secrets and Leonida locations in GTA 6",
         "Lucia and Jason character backstory and gameplay mechanics in GTA 6",
@@ -32,7 +33,7 @@ def generate_gta6_script():
         "search_keywords": ["neon city", "sports car", "miami beach", "gaming"]
     }}
     """
-    models_to_try = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.0-flash"]
+    models_to_try = ["gemini-3.5-flash-lite", "gemini-3.0-flash", "gemini-2.5-flash"]
     for model_name in models_to_try:
         try:
             response = client.models.generate_content(
@@ -44,7 +45,7 @@ def generate_gta6_script():
         except Exception as e:
             print(f"Model {model_name} busy, trying next... Error: {e}")
             time.sleep(5)
-    raise RuntimeError("All Gemini models are temporarily busy. Please try again in a few minutes.")
+    raise RuntimeError("All Gemini models are temporarily busy.")
 
 # 2. Create Natural English Male Voiceover
 async def create_voiceover(text, output_audio="voice.mp3"):
@@ -53,16 +54,20 @@ async def create_voiceover(text, output_audio="voice.mp3"):
 
 # 3. Fetch Background Video Clips from Pixabay
 def download_clips(keywords):
-    api_key = os.environ["PIXABAY_API_KEY"]
+    api_key = os.environ["PIXABAY_API_KEY"].strip()
+    base_url = "https://pixabay.com"
     clip_files = []
     for idx, kw in enumerate(keywords[:4]):
-        query = requests.utils.quote(kw)
-        url = f"https://pixabay.com{api_key}&q={query}&per_page=5"
-        res = requests.get(url).json()
+        params = {
+            "key": api_key,
+            "q": kw,
+            "per_page": 5
+        }
+        res = requests.get(base_url, params=params).json()
         hits = res.get("hits", [])
         if not hits:
-            fallback_url = f"https://pixabay.com{api_key}&q=neon+city&per_page=5"
-            hits = requests.get(fallback_url).json().get("hits", [])
+            params["q"] = "neon city"
+            hits = requests.get(base_url, params=params).json().get("hits", [])
         if hits:
             video_choice = random.choice(hits)
             video_url = video_choice["videos"]["medium"]["url"]
@@ -99,10 +104,10 @@ def build_video(clip_files, audio_file="voice.mp3", output_video="gta6_short.mp4
 def upload_to_youtube(video_path, title, description):
     creds = Credentials(
         token=None,
-        refresh_token=os.environ["REFRESH_TOKEN"],
+        refresh_token=os.environ["REFRESH_TOKEN"].strip(),
         token_uri="https://googleapis.com",
-        client_id=os.environ["CLIENT_ID"],
-        client_secret=os.environ["CLIENT_SECRET"],
+        client_id=os.environ["CLIENT_ID"].strip(),
+        client_secret=os.environ["CLIENT_SECRET"].strip(),
     )
     youtube = build("youtube", "v3", credentials=creds)
     body = {
