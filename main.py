@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import random
 import asyncio
 import requests
@@ -10,7 +11,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# 1. Generate 100% English GTA 6 Short Script using Gemini
+# 1. Generate 100% English GTA 6 Short Script with Auto-Retry & Fallback Models
 def generate_gta6_script():
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     topics = [
@@ -31,12 +32,19 @@ def generate_gta6_script():
         "search_keywords": ["neon city", "sports car", "miami beach", "gaming"]
     }}
     """
-    response = client.models.generate_content(
-        model="gemini-3.5-flash",
-        contents=prompt,
-    )
-    raw_text = response.text.strip().replace("```json", "").replace("```", "").strip()
-    return json.loads(raw_text)
+    models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+            )
+            raw_text = response.text.strip().replace("```json", "").replace("```", "").strip()
+            return json.loads(raw_text)
+        except Exception as e:
+            print(f"Model {model_name} busy, trying next... Error: {e}")
+            time.sleep(5)
+    raise RuntimeError("All Gemini models are temporarily busy. Please try again in a few minutes.")
 
 # 2. Create Natural English Male Voiceover
 async def create_voiceover(text, output_audio="voice.mp3"):
@@ -78,7 +86,6 @@ def build_video(clip_files, audio_file="voice.mp3", output_video="gta6_short.mp4
         else:
             clip = clip.subclip(0, sub_duration)
         
-        # Resize and center-crop to 9:16 vertical (1080x1920)
         clip = clip.resize(height=1920)
         if clip.w < 1080:
             clip = clip.resize(width=1080)
